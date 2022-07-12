@@ -59,10 +59,11 @@ def test(dataloader, model, loss_fn):
     test_loss /= num_batches
     print(f"Test Error: \n Avg loss: {test_loss:>8f} \n")
 
-def get_param_or_err(name: str):
-    if not rospy.has_param(f"~{name}"):
+def get_param_or_err(name: str, is_private: bool = True):
+    path = f"~{name}" if is_private else name
+    if not rospy.has_param(path):
         rospy.signal_shutdown(f"Required parameter missing: {name}")
-    return rospy.get_param(f"~{name}")
+    return rospy.get_param(path)
 
 if __name__ == "__main__":
     rospy.init_node("train")
@@ -81,7 +82,7 @@ if __name__ == "__main__":
         
         if not os.path.exists(output_path):
             rospy.signal_shutdown(f"Failed to create output folder: {output_path}")
-    output_file = output_path + f"/model-{dt.now().strftime("%H-%M-%S")}.pth"
+    output_file = output_path + f"/model-{dt.now().strftime('%H-%M-%S')}.pth"
 
     # Create dataset
     dataset = gsr.GelsightDepthDataset(input_path)

@@ -89,7 +89,7 @@ if __name__ == "__main__":
         if not os.path.exists(output_path):
             rospy.signal_shutdown(f"Failed to create output folder: {output_path}")
     
-    output_file = output_path + f"/dataset-{dt.now().strftime("%H-%M-%S")}.csv"
+    output_file = output_path + f"/dataset-{dt.now().strftime('%H-%M-%S')}.csv"
 
     if rospy.get_param("~write_headers", DEFAULT_WRITE_HEADERS):
         # Writing CSV headers to dataset
@@ -98,8 +98,8 @@ if __name__ == "__main__":
             w.writerow(DEFAULT_FIELD_NAMES)
 
     # Retrieve sensor specific parameters
-    radius = get_param_or_err("ball_radius")
-    mpp = get_param_or_err("mpp")
+    radius = get_param_or_err("ball_radius") / 1000.0
+    mpp = get_param_or_err("mmpp") / 1000.0
 
     # Retrieve all images from input path
     imgs = [input_path + "/" + f for f in sorted(os.listdir(input_path))
@@ -117,29 +117,26 @@ if __name__ == "__main__":
             # Collect next frame and compute diff from initial frame
             # TODO: Refactor to use preprocess from src
             current_img = cv2.imread(imgs[0])
-            current_frame = ((current_img * 1.0) - init_frame) * 4 + 127
+            current_frame = ((current_img * 1.0) - init_frame) * 3
             current_frame[current_frame > 255] = 255
             current_frame[current_frame < 0] = 0
             current_frame = np.uint8(current_frame)
 
             # Convert to grayscale and find circles using hough transform
             grayscale_frame = cv2.cvtColor(current_frame, cv2.COLOR_RGB2GRAY)
-            circles = cv2.HoughCircles(grayscale_frame, cv2.HOUGH_GRADIENT, 1, 20,
-                param1=50,param2=30,minRadius=5,maxRadius=30)
-            print(circles)
             display_frame = current_frame.copy()
-            # if len(circles) > 0:
-            circles = np.uint16(np.around(circles))
-            if len(circles[0, :]) > 0:
-                circle = circles[0, :, 0]
-                # Draw first circle
-                # circle = np.uint16(np.around(circles))[0,:,0]
-                cv2.circle(grayscale_frame, (int(circle[0]), int(circle[1])),
-                    int(circle[2]), (0,255,0), 2)
-                cv2.circle(grayscale_frame, (int(circle[0]), int(circle[1])),
-                    2, (0, 0, 255), 3)
 
-            cv2.imshow('label_data', grayscale_frame) 
+            circles = cv2.HoughCircles(grayscale_frame, cv2.HOUGH_GRADIENT, 1, 20,
+                param1=30,param2=30,minRadius=5,maxRadius=30)
+            if circles is not None:
+                for circle in circles[0]:
+                    cv2.circle(display_frame, (int(circle[0]), int(circle[1])),
+                        int(circle[2]), (0,255,0), 2)
+                    cv2.circle(display_frame, (int(circle[0]), int(circle[1])),
+                        2, (0, 0, 255), 3)
+                    break # Only print first
+
+            cv2.imshow('label_data', display_frame) 
             
             while True:
                 k = cv2.waitKey(1)

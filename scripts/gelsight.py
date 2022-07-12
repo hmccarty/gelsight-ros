@@ -26,8 +26,6 @@ DEFAULT_FLOW_TOPIC_NAME = "flow"
 DEFAULT_FLOW_IMAGE_TOPIC_NAME = "flow_image"
 DEFAULT_POSE_TOPIC_NAME = "pose"
 
-def get_param_or_err(name: str):
-
 if __name__ == "__main__":
     rospy.init_node("gelsight")
     rate = rospy.Rate(rospy.get_param("~rate", DEFAULT_RATE))

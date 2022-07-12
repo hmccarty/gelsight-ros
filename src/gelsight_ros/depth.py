@@ -103,7 +103,7 @@ class DepthFromCustomModelProc(DepthProc):
     """
 
     # Parameter defaults
-    compute_type: str = "cpu"
+    compute_type: str = "cuda"
     image_mpp: float = 0.005
     model_output_width: int = 120
     model_output_height: int = 160
@@ -132,14 +132,12 @@ class DepthFromCustomModelProc(DepthProc):
         self._init_dm: Optional[GelsightDepth] = None
         self._dm: Optional[GelsightDepth] = None
 
-        self.vis3d = Visualize3D(120, 160, '', 0.00018958889782351692)
-
     def execute(self) -> PointCloud2:
         frame = self._stream.get_frame()
         if self._init_frame is None:
             self._init_frame = frame
 
-        frame = ((frame * 1.0) - self._init_frame) * 4 + 127
+        frame = ((frame * 1.0) - self._init_frame) * 3.0
         frame[frame > 255] = 255
         frame[frame < 0] = 0
         frame = np.uint8(frame)
@@ -166,7 +164,6 @@ class DepthFromCustomModelProc(DepthProc):
         dm = poisson_reconstruct(gx, gy, boundary)
         dm = np.reshape(dm, (self.model_output_height, self.model_output_width))
 
-        self.vis3d.update(dm)
         # Process depth map and return
         dm *= -1
         if self._init_dm is None:
