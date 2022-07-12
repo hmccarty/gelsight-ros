@@ -1,5 +1,5 @@
 <launch>
-  <arg name="input_path"/>
+  <arg name="input_path" />
   <arg name="output_path" default="$(find gelsight_ros)/data"/>
   <arg name="ball_radius"/>
 

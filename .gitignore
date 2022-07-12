@@ -1,3 +1,6 @@
 src/gelsightinc
-*.pyc
 venv/
+*.pyc
+*.csv
+*.pth
+*.jpg

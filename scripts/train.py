@@ -102,13 +102,13 @@ if __name__ == "__main__":
     test_size = len(dataset) - train_size
     trainset, testset = torch.utils.data.random_split(dataset, [train_size, test_size])
 
-    train_dataloader = DataLoader(trainset, batch_size=batch_size)
+    train_dataloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
     test_dataloader = DataLoader(testset, batch_size=batch_size)
 
     # Initiate model and optimizer
     model = gsr.RGB2Grad().to(device)
     loss_fn = nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
     # Train model
     epochs = 10

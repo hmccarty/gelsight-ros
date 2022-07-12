@@ -17,7 +17,6 @@ import os
 import rospy
 import matplotlib.pyplot as plt
 
-DEFAULT_FIELD_NAMES = ['img_name', 'R', 'G', 'B', 'x', 'y', 'gx', 'gy']
 imw = 120
 imh = 160
 mpp = 0.00018958889782351692
@@ -58,7 +57,8 @@ if __name__ == "__main__":
                 uy = gy / norm
             ux = gx
             uy = gy
-            file_labels[img_name][int(y), int(x)] = [ux, uy, R + G + B]
+            file_labels[img_name][int(y)        # Interpolate gradients over markers
+        gx, gy = demark(frame, gx, gy), int(x)] = [ux, uy, R + G + B]
 
     # Collect first image from dataset
     img = list(file_labels.keys())[0]
@@ -78,5 +78,8 @@ if __name__ == "__main__":
     boundary = np.zeros((imh, imw))
     dm = gsr.util.poisson_reconstruct(U, V, boundary)
     dm = np.reshape(dm, (imh, imw))
-    vis3d.update(dm)
-    cv2.waitKey(100000000)
+
+    rate = rospy.Rate(10)
+    while not rospy.is_shutdown():
+        vis3d.update(dm)
+        rate.sleep()

@@ -35,7 +35,6 @@ import os
 import random
 import rospy
 
-DEFAULT_RATE = 30
 DEFAULT_FIELD_NAMES = ['img_name', 'R', 'G', 'B', 'x', 'y', 'gx', 'gy']
 mpp = 0.00018958889782351692
 
@@ -65,6 +64,7 @@ if __name__ == "__main__":
     rospy.init_node("label")
 
     # Retrieve path where images are saved
+    # TODO: Allow for relative path
     if not rospy.has_param("~input_path"):
         rospy.signal_shutdown("No input path provided. Please set input_path/.")
     input_path = rospy.get_param("~input_path")
@@ -117,8 +117,8 @@ if __name__ == "__main__":
             # Convert to grayscale and find circles using hough transform
             grayscale_frame = cv2.cvtColor(current_frame, cv2.COLOR_RGB2GRAY)
             circles = cv2.HoughCircles(grayscale_frame, cv2.HOUGH_GRADIENT, 1, 20,
-                param1=50,param2=30,minRadius=0,maxRadius=0)
-
+                param1=50,param2=30,minRadius=5,maxRadius=30)
+            print(circles)
             display_frame = current_frame.copy()
             # if len(circles) > 0:
             circles = np.uint16(np.around(circles))
@@ -144,20 +144,18 @@ if __name__ == "__main__":
                     gy = (circle[1] - yv) * mpp
                     
                     # Compute x and y gradients using equation of a sphere
-                    dist = radius**2 - np.power(gx, 2) - np.power(gy, 2)
-                    gx = np.where(dist > 0.0, -(gx)/np.sqrt(np.abs(dist)), 0.0)
-                    print(gx)
-                    gy = np.where(dist > 0.0, -(gy)/np.sqrt(np.abs(dist)), 0.0)
-
-                    # Interpolate gradients along markers
-                    gx, gy = gsr.util.demark(current_img, gx, gy)            
+                    dist = np.power(gx, 2) + np.power(gy, 2)
+                    dist_from_im = (circle[2] * mpp)**2 - dist
+                    dist_from_real = radius**2 - dist
+                    gx = np.where(dist_from_im > 0.0, -gx/np.sqrt(np.abs(dist_from_real)), 0.0)
+                    gy = np.where(dist_from_im > 0.0, -gy/np.sqrt(np.abs(dist_from_real)), 0.0)
 
                     # Turn gradients into dataset labels
                     labels = []
                     for x in range(current_frame.shape[1]):
                         for y in range(current_frame.shape[0]):
                             # Only only for 5% of zero gradients to be entered as labels
-                            if gx[y, x] == 0.0 and gy[y, x] == 0.0 and random.random() < 0.05: 
+                            if gx[y, x] == 0.0 and gy[y, x] == 0.0 and random.random() > 0.05: 
                                 continue
 
                             r = current_frame[y, x, 0]

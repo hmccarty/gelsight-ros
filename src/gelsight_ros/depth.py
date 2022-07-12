@@ -18,7 +18,7 @@ from typing import Dict, Tuple, Any, Optional
 
 from .proc import GelsightProc
 from .data import GelsightDepth, GelsightFlow, GelsightMarkers, GelsightPose
-from .gs3drecon import Reconstruction3D, Finger
+from .gs3drecon import Reconstruction3D, Finger, Visualize3D
 from .stream import GelsightStream
 from .model import RGB2Grad
 from .util import *
@@ -132,6 +132,8 @@ class DepthFromCustomModelProc(DepthProc):
         self._init_dm: Optional[GelsightDepth] = None
         self._dm: Optional[GelsightDepth] = None
 
+        self.vis3d = Visualize3D(120, 160, '', 0.00018958889782351692)
+
     def execute(self) -> PointCloud2:
         frame = self._stream.get_frame()
         if self._init_frame is None:
@@ -141,28 +143,30 @@ class DepthFromCustomModelProc(DepthProc):
         frame[frame > 255] = 255
         frame[frame < 0] = 0
         frame = np.uint8(frame)
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
         # Transform frame into model input
         # TODO: Refactor to use numpy
         X_i = np.zeros((self.model_output_height * self.model_output_width, 5))
-        for x in range(frame.shape[1]):
-            for y in range(frame.shape[0]):
-                X_i[x*y] = np.concatenate((frame[y, x], np.array((x, y))))
+        z = 0
+        for y in range(frame.shape[0]):
+            for x in range(frame.shape[1]):
+                X_i[z] = np.concatenate((frame[y, x], np.array((x, y))))
+                z += 1
 
         # Collect gradients from model and reshape
         grad = self._model(torch.from_numpy(X_i.astype(np.float32)))
-        gx = grad.detach().numpy()[:, 0].reshape((self.model_output_height, self.model_output_width))
-        gy = grad.detach().numpy()[:, 1].reshape((self.model_output_height, self.model_output_width))
+        gx = grad.detach().numpy()[:, 1].reshape((self.model_output_height, self.model_output_width))
+        gy = grad.detach().numpy()[:, 0].reshape((self.model_output_height, self.model_output_width))
 
         # Interpolate gradients over markers
-        gx, gy = demark(frame, gx, gy)
+        # gx, gy = demark(frame, gx, gy)
 
         # Construct depth map using poisson reconstruction
         boundary = np.zeros((self.model_output_height, self.model_output_width))
         dm = poisson_reconstruct(gx, gy, boundary)
         dm = np.reshape(dm, (self.model_output_height, self.model_output_width))
 
+        self.vis3d.update(dm)
         # Process depth map and return
         dm *= -1
         if self._init_dm is None:
@@ -209,9 +213,9 @@ class DepthFromPoissonProc(DepthProc):
 
     def img2depth(self, frame: np.ndarray):
         diff = frame * 1.0 - self._init_frame
-        dx = diff[:, :, 1] / 255.0
+        dx = diff[:, :, 0] / 255.0
         dx = dx / (1.0 - dx ** 2) ** 0.5 / 32.0
-        dy = (diff[:, :, 0] - diff[:, :, 2]) / 255.0
+        dy = (diff[:, :, 1] - diff[:, :, 2]) / 255.0
         dy = dy / (1.0 - dy ** 2) ** 0.5 / 32.0
 
         diff /= 255.0
