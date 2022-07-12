@@ -3,7 +3,7 @@
 """
 Runs main pipeline for gelsight inference.
 
-Stream and processes configured in config/gelsight.yml
+Conifgured in config/gelsight.yml
 """
 
 import gelsight_ros as gsr
@@ -13,7 +13,7 @@ import rospy
 from sensor_msgs.msg import PointCloud2, Image
 import traceback
 
-# ROS defaults
+# Default parameters
 DEFAULT_RATE = 30
 DEFAULT_QUEUE_SIZE = 2
 DEFAULT_IMAGE_TOPIC_NAME = "raw"
@@ -25,6 +25,8 @@ DEFAULT_MARKER_IMAGE_TOPIC_NAME = "marker_image"
 DEFAULT_FLOW_TOPIC_NAME = "flow"
 DEFAULT_FLOW_IMAGE_TOPIC_NAME = "flow_image"
 DEFAULT_POSE_TOPIC_NAME = "pose"
+
+def get_param_or_err(name: str):
 
 if __name__ == "__main__":
     rospy.init_node("gelsight")

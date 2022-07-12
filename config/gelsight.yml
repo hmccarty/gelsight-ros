@@ -8,7 +8,7 @@ http_stream:
   publish_image: true
   width: 480
   height: 640
-  mmpp: 0.0887
+  mpp: 0.00018958889782351692
   roi_x0: 70
   roi_y0: 120
   roi_x1: 345

@@ -1,28 +1,13 @@
 #!/usr/bin/env python3
 
 """
-Labels data for training a depth reconstruction model.
-Can collect images using the 'record.py' script.
-
-The dataset can only include the impression and rolling
-of a single spherical object (like a marble). The first image
-should also have no impression, for purposes of training from the
-pixel-wise difference.
+Allows you to quickly check the meter-per-pixel
+of a Gelsight sensor.
 
 Directions:
-- Press 'Y' to accept current circle label into the dataset
-- Press 'N' to discard current image
-- Press 'Q' to exit the program
-- Click, drag and release to manually label a circle (replaces current label)
-
-From a technical perspective, this script uses the known radius
-of a spherical object to estimate the gradient at every contact
-point. From the gradients, it can then generate a dataset in CSV
-format which relates (R, G, B, x, y) -> (gx, gy). For inference,
-you can then use poisson reconstruction to build the depth
-map from gradients.
-
-You can train a new model from the output dataset using the 'train.py' script.
+Press a pair of calipers on the finger of the gelsight and take a screenshot.
+Run this script with the length and image path as arguments.
+Click the two points of calipers and check the command-line for the value.
 """
 
 import csv
@@ -34,6 +19,7 @@ import numpy as np
 import os
 import rospy
 
+# Global variables
 dist = None
 click_a = None
 
@@ -48,20 +34,20 @@ def click_cb(event, x, y, flags, param):
             exit()
 
 if __name__ == "__main__":
-    rospy.init_node("px_dist")
+    rospy.init_node("get_mpp")
 
     dist = rospy.get_param("~dist")
 
     # Retrieve path where image is stored
-    if not rospy.has_param("~input_path"):
-        rospy.signal_shutdown("No input path provided. Please set input_path/.")
-    input_path = rospy.get_param("~input_path")
+    if not rospy.has_param("~img_path"):
+        rospy.signal_shutdown("No input path provided. Please set img_path/.")
+    input_path = rospy.get_param("~img_path")
     im = cv2.imread(input_path)
 
     # Configure cv window
-    cv2.namedWindow('px_dist')
-    cv2.setMouseCallback('px_dist', click_cb)
+    cv2.namedWindow("get_mpp")
+    cv2.setMouseCallback("get_mpp", click_cb)
 
-    cv2.imshow('px_dist', im) 
+    cv2.imshow("get_mpp", im) 
     cv2.waitKey(0)
     cv2.destroyAllWindows()
