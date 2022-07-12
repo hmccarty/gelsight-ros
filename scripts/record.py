@@ -11,6 +11,7 @@ import gelsight_ros as gsr
 import os
 import rospy
 
+# Default parameters
 DEFAULT_RATE = 30
 DEFAULT_DURATION = 30
 DEFAULT_NUM_IMGS = 5000

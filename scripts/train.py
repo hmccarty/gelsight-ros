@@ -1,28 +1,8 @@
 #!/usr/bin/env python3
 
 """
-Labels data for training a depth reconstruction model.
-Can collect images using the 'record.py' script.
-
-The dataset can only include the impression and rolling
-of a single spherical object (like a marble). The first image
-should also have no impression, for purposes of training from the
-pixel-wise difference.
-
-Directions:
-- Press 'Y' to accept current circle label into the dataset
-- Press 'N' to discard current image
-- Press 'Q' to exit the program
-- Click, drag and release to manually label a circle (replaces current label)
-
-From a technical perspective, this script uses the known radius
-of a spherical object to estimate the gradient at every contact
-point. From the gradients, it can then generate a dataset in CSV
-format which relates (R, G, B, x, y) -> (gx, gy). For inference,
-you can then use poisson reconstruction to build the depth
-map from gradients.
-
-You can train a new model from the output dataset using the 'train.py' script.
+Trains a depth reconstruction model using the dataset created by
+the 'label_data.py' script.
 """
 
 import csv
@@ -33,11 +13,19 @@ import math
 import numpy as np
 import os
 import rospy
+from datetime import datetime as dt
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-device = "cuda"
+# Default parameters
+DEFAULT_BATCH_SIZE = 64
+DEFAULT_TRAIN_SPLIT = 0.8
+DEFAULT_LR = 1e-3
+DEFAULT_EPOCHS = 10
+
+# Global parameters
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def train(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
@@ -71,18 +59,19 @@ def test(dataloader, model, loss_fn):
     test_loss /= num_batches
     print(f"Test Error: \n Avg loss: {test_loss:>8f} \n")
 
+def get_param_or_err(name: str):
+    if not rospy.has_param(f"~{name}"):
+        rospy.signal_shutdown(f"Required parameter missing: {name}")
+    return rospy.get_param(f"~{name}")
+
 if __name__ == "__main__":
     rospy.init_node("train")
 
-    # Retrieve path where images are saved
-    if not rospy.has_param("~input_path"):
-        rospy.signal_shutdown("No input path provided. Please set input_path/.")
-    input_path = rospy.get_param("~input_path")
+    # Retrieve path to dataset
+    input_path = get_param_or_err("input_path")
 
-    # Retrieve path where dataset will be saved    
-    if not rospy.has_param("~output_path"):
-        rospy.signal_shutdown("No output path provided. Please set output_path/.")
-    output_path = rospy.get_param("~output_path")
+    # Retrieve path where dataset will be saved
+    output_path = get_param_or_err("output_path")
     if output_path[-1] == "/":
         output_path = output_path[:len(output_path)-1]
 
@@ -92,30 +81,29 @@ if __name__ == "__main__":
         
         if not os.path.exists(output_path):
             rospy.signal_shutdown(f"Failed to create output folder: {output_path}")
-    output_file = output_path + "/gelsight-depth-dataset.csv"
+    output_file = output_path + f"/model-{dt.now().strftime("%H-%M-%S")}.pth"
 
     # Create dataset
-    batch_size = 64
     dataset = gsr.GelsightDepthDataset(input_path)
 
-    train_size = int(len(dataset) * 0.8)
+    train_size = int(len(dataset) * DEFAULT_TRAIN_SPLIT)
     test_size = len(dataset) - train_size
     trainset, testset = torch.utils.data.random_split(dataset, [train_size, test_size])
 
-    train_dataloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
-    test_dataloader = DataLoader(testset, batch_size=batch_size)
+    train_dataloader = DataLoader(trainset, batch_size=DEFAULT_BATCH_SIZE, shuffle=True)
+    test_dataloader = DataLoader(testset, batch_size=DEFAULT_BATCH_SIZE)
 
     # Initiate model and optimizer
     model = gsr.RGB2Grad().to(device)
     loss_fn = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=DEFAULT_LR)
 
     # Train model
-    epochs = 10
+    epochs = DEFAULT_EPOCHS
     for t in range(epochs):
         print(f"Epoch {t+1}\n-------------------------------")
         train(train_dataloader, model, loss_fn, optimizer)
         test(test_dataloader, model, loss_fn)
     print("Done!")
 
-    torch.save(model.state_dict(), "model.pth")
+    torch.save(model.state_dict(), output_file)

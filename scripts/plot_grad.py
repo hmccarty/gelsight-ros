@@ -17,19 +17,23 @@ import os
 import rospy
 import matplotlib.pyplot as plt
 
-imw = 120
-imh = 160
-mpp = 0.00018958889782351692
+def get_param_or_err(name: str):
+    if not rospy.has_param(f"~{name}"):
+        rospy.signal_shutdown(f"Required parameter missing: {name}")
+    return rospy.get_param(f"~{name}")
 
 if __name__ == "__main__":
     rospy.init_node("plot")
 
     # Retrieve path where dataset is stored
-    if not rospy.has_param("~input_path"):
-        rospy.signal_shutdown("No input path provided. Please set input_path/.")
-    input_path = rospy.get_param("~input_path")
+    input_path = get_param_or_err("input_path") 
     if input_path[-1] == "/":
         input_path = input_path[:len(input_path)-1]
+
+    # Retrieve sensor specific parameters
+    imgw = get_param_or_err("image_width")
+    imgh = get_param_or_err("image_height")
+    mpp = get_param_or_err("mpp")
 
     # Collect gradient data
     file_labels = {}
@@ -41,7 +45,7 @@ if __name__ == "__main__":
                 continue
 
             if img_name not in file_labels:
-                file_labels[img_name] = np.zeros((160, 120, 3))
+                file_labels[img_name] = np.zeros((imgh, imgw, 3))
 
             R = float(R)
             G = float(G)
@@ -49,6 +53,7 @@ if __name__ == "__main__":
             gx = float(gx)
             gy = float(gy)
             norm = math.sqrt((gx*gx) + (gy*gy)) 
+
             if norm == 0.0:
                 ux = 0.0
                 uy = 0.0
@@ -62,8 +67,8 @@ if __name__ == "__main__":
 
     # Collect first image from dataset
     img = list(file_labels.keys())[0]
-    X = np.arange(imw)
-    Y = np.flip(np.arange(imh))
+    X = np.arange(imgw)
+    Y = np.flip(np.arange(imgh))
     U = file_labels[img][:, :, 1]
     V = file_labels[img][:, :, 0]
     C = file_labels[img][:, :, 2]
@@ -74,11 +79,10 @@ if __name__ == "__main__":
     plt.show()
 
     # Plot open3d pointcloud
-    vis3d = gsr.gs3drecon.Visualize3D(imw, imh, '', mpp)
-    boundary = np.zeros((imh, imw))
+    vis3d = gsr.gs3drecon.Visualize3D(imgw, imgh, '', mpp)
+    boundary = np.zeros((imgh, imgw))
     dm = gsr.util.poisson_reconstruct(U, V, boundary)
-    dm = np.reshape(dm, (imh, imw))
-
+    dm = np.reshape(dm, (imgh, imgw))
     rate = rospy.Rate(10)
     while not rospy.is_shutdown():
         vis3d.update(dm)

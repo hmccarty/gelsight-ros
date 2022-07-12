@@ -22,12 +22,13 @@ format which relates (R, G, B, x, y) -> (gx, gy). For inference,
 you can then use poisson reconstruction to build the depth
 map from gradients.
 
-You can train a new model from the output dataset using the 'train.py' script.
+You can train a model from this dataset using the 'train.py' script.
 """
 
 import csv
 from csv import writer
 import cv2
+from datetime import datetime as dt
 import gelsight_ros as gsr
 import math
 import numpy as np
@@ -35,9 +36,12 @@ import os
 import random
 import rospy
 
+# Default parameters
 DEFAULT_FIELD_NAMES = ['img_name', 'R', 'G', 'B', 'x', 'y', 'gx', 'gy']
-mpp = 0.00018958889782351692
+DEFAULT_WRITE_HEADERS = True
+DEFAULT_AMT_EMPTY = 0.05 # %
 
+# Global variables
 current_frame = None
 circle = None
 click_start = None
@@ -60,21 +64,21 @@ def click_cb(event, x, y, flags, param):
 
         cv2.imshow('label_data', display_frame)
 
+def get_param_or_err(name: str):
+    if not rospy.has_param(f"~{name}"):
+        rospy.signal_shutdown(f"Required parameter missing: {name}")
+    return rospy.get_param(f"~{name}")
+
 if __name__ == "__main__":
     rospy.init_node("label")
 
     # Retrieve path where images are saved
-    # TODO: Allow for relative path
-    if not rospy.has_param("~input_path"):
-        rospy.signal_shutdown("No input path provided. Please set input_path/.")
-    input_path = rospy.get_param("~input_path")
+    input_path = get_param_or_err("input_path")
     if input_path[-1] == "/":
         input_path = input_path[:len(input_path)-1]
 
     # Retrieve path where dataset will be saved    
-    if not rospy.has_param("~output_path"):
-        rospy.signal_shutdown("No output path provided. Please set output_path/.")
-    output_path = rospy.get_param("~output_path")
+    output_path = get_param_or_err("output_path")
     if output_path[-1] == "/":
         output_path = output_path[:len(output_path)-1]
 
@@ -84,30 +88,34 @@ if __name__ == "__main__":
         
         if not os.path.exists(output_path):
             rospy.signal_shutdown(f"Failed to create output folder: {output_path}")
-    output_file = output_path + "/gelsight-depth-dataset.csv"
+    
+    output_file = output_path + f"/dataset-{dt.now().strftime("%H-%M-%S")}.csv"
 
-    with open(output_file, 'w', newline='') as f:
-        w = writer(f)
-        w.writerow(DEFAULT_FIELD_NAMES)
+    if rospy.get_param("~write_headers", DEFAULT_WRITE_HEADERS):
+        # Writing CSV headers to dataset
+        with open(output_file, 'w', newline='') as f:
+            w = writer(f)
+            w.writerow(DEFAULT_FIELD_NAMES)
 
-    # Retrieve ball radius for building labels
-    if not rospy.has_param("~ball_radius"):
-        rospy.signal_shutdown("No ball radius provided. Please set ball_radius.")
-    radius = rospy.get_param("~ball_radius")
+    # Retrieve sensor specific parameters
+    radius = get_param_or_err("ball_radius")
+    mpp = get_param_or_err("mpp")
 
     # Retrieve all images from input path
-    imgs = [input_path + "/" + f for f in sorted(os.listdir(input_path)) if os.path.isfile(os.path.join(input_path, f))]
+    imgs = [input_path + "/" + f for f in sorted(os.listdir(input_path))
+        if os.path.isfile(os.path.join(input_path, f))]
     init_frame = cv2.imread(imgs[0])
     imgs = imgs[1:]                
 
     # Configure cv window
-    cv2.namedWindow('label_data')
-    cv2.setMouseCallback('label_data', click_cb)
+    cv2.namedWindow("label_data")
+    cv2.setMouseCallback("label_data", click_cb)
 
     # Main loop
     while not rospy.is_shutdown() and len(imgs) > 0:
         try:
             # Collect next frame and compute diff from initial frame
+            # TODO: Refactor to use preprocess from src
             current_img = cv2.imread(imgs[0])
             current_frame = ((current_img * 1.0) - init_frame) * 4 + 127
             current_frame[current_frame > 255] = 255
@@ -154,8 +162,9 @@ if __name__ == "__main__":
                     labels = []
                     for x in range(current_frame.shape[1]):
                         for y in range(current_frame.shape[0]):
-                            # Only only for 5% of zero gradients to be entered as labels
-                            if gx[y, x] == 0.0 and gy[y, x] == 0.0 and random.random() > 0.05: 
+                            # Discard a certain perctage of zero gradients
+                            if gx[y, x] == 0.0 and gy[y, x] == 0.0 and \
+                                random.random() > DEFAULT_AMT_EMPTY: 
                                 continue
 
                             r = current_frame[y, x, 0]
@@ -166,6 +175,7 @@ if __name__ == "__main__":
 
                     # Write all labels to CSV file 
                     with open(output_file, 'a', newline='') as f:
+                        rospy.loginfo(f"Writing {len(labels)} labels to {output_file}")
                         w = writer(f)
                         for label in labels:
                             w.writerow(label)
