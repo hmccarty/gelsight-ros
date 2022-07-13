@@ -18,7 +18,7 @@ if __name__ == "__main__":
     rospy.init_node("cv_window")
 
     # Setup stream
-    cfg = rospy.get_param("~http_stream")
+    cfg = rospy.get_param("stream")
     if "roi" in cfg:
         del cfg["roi"]
     stream = gsr.ImageProc(cfg)

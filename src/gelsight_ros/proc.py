@@ -9,8 +9,12 @@ from typing import Dict, Tuple, Any, Optional
 
 from .util import *
 
+class ProcExecutionError(Exception):
+    """Raised when non-fatal error occurs in execution"""
+    pass
+
 class GelsightProc:
-    def execute(self):
+    def execute(self) -> bool:
         raise NotImplementedError()
 
     def get_ros_type(self) -> ROSMsg:
@@ -26,7 +30,7 @@ class ImageProc(GelsightProc):
 
     # Parameter defaults
     encoding: str = "bgr8"
-    size: Tuple[int, int] = (160, 120) # height, width
+    size: Tuple[int, int] = (120, 160) # width, height 
 
     def __init__(self, cfg: Dict[str, Any]):
         super().__init__()
@@ -35,15 +39,15 @@ class ImageProc(GelsightProc):
             raise RuntimeError("Missing stream url.")
         self._dev = cv2.VideoCapture(cfg["url"])
         self.size = (
-            int(cfg["height"]) if "height" in cfg else self.size[0],
-            int(cfg["width"]) if "width" in cfg else self.size[1],
+            int(cfg["width"]) if "width" in cfg else self.size[0],
+            int(cfg["height"]) if "height" in cfg else self.size[1],
         )
 
-        self.output_coords = [(0, 0), (self.size[0], 0), (0, self.size[1]), self.size]
+        self.output_coords = [(0, 0), (self.size[0], 0), self.size, (0, self.size[1])]
         self._roi = cfg["roi"] if "roi" in cfg else None
         self._frame = None
 
-    def is_running(self):
+    def is_running(self) -> bool:
         return self._dev.isOpened()
 
     def execute(self):
@@ -60,12 +64,13 @@ class ImageProc(GelsightProc):
         self._frame = frame
 
     def get_frame(self) -> Optional[np.ndarray]:
-        return self._frame
+        if self._frame is not None:
+            return np.copy(self._frame)
 
     def get_ros_type(self) -> Image:
         return Image
 
-    def get_ros_msg(self) -> Image:
+    def get_ros_msg(self) -> Optional[Image]:
         return CvBridge().cv2_to_imgmsg(self._frame, self.encoding)
 
 class ImageDiffProc(GelsightProc):
@@ -94,10 +99,12 @@ class ImageDiffProc(GelsightProc):
         self._diff_frame = diff
 
     def get_frame(self) -> Optional[np.ndarray]:
-        return self._diff_frame
+        if self._diff_frame is not None:
+            return np.copy(self._diff_frame)
 
     def get_ros_type(self) -> Image:
         return Image
 
-    def get_ros_msg(self) -> Image:
-        return CvBridge().cv2_to_imgmsg(np.uint8(self._diff_frame), self.encoding)
+    def get_ros_msg(self) -> Optional[Image]:
+        if self._diff_frame is not None:
+            return CvBridge().cv2_to_imgmsg(np.uint8(self._diff_frame), self.encoding)

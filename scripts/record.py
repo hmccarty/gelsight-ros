@@ -37,18 +37,10 @@ if __name__ == "__main__":
         if not os.path.exists(output_path):
             rospy.signal_shutdown(f"Failed to create output folder: {output_path}")
 
-    cfg = rospy.get_param("~http_stream")
+    cfg = rospy.get_param("stream")
     if not cfg:
         rospy.signal_shutdown("No config provided for HTTP stream. Please set http_stream/.")
-
-    if "url" not in cfg:
-        rospy.signal_shutdown("No URL provided for HTTP stream. Please set http_stream/url.")
-
-    if not all(roi in cfg for roi in ["roi_x0", "roi_y0", "roi_x1", "roi_y1"]):
-        rospy.signal_shutdown("Missing one of the roi corners. Please check http_stream/roi_X.")
-    roi = (cfg["roi_x0"], cfg["roi_y0"], cfg["roi_x1"], cfg["roi_y1"])
-
-    stream = gsr.GelsightHTTPStream(cfg["url"], roi)
+    stream = gsr.ImageProc(cfg["url"])
     
     # Main loop
     i = 0

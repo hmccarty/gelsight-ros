@@ -100,7 +100,6 @@ class FlowProc(GelsightProc):
       - flow_scale (default: 5)
     """
 
-
     # Parameter defaults
     marker_shape: Tuple[int, int] = (14, 10) 
     matching_fps: int = 25
@@ -204,11 +203,11 @@ class DrawFlowProc(GelsightProc):
         self._flow: FlowProc = flow
         self._frame: Optional[np.ndarray] = None
 
-    def execute(self) -> Image:
+    def execute(self):
         frame = self._stream.get_frame()
         flow = self._flow.get_flow()
         if flow is None:
-            return None
+            return
 
         for i in range(flow.ref.markers.data.shape[0]):
             p0 = (int(flow.ref.markers.data[i, 0]), int(flow.ref.markers.data[i, 1]))

@@ -12,6 +12,7 @@ import torch
 from typing import Dict, Tuple, Any, Optional
 
 from .proc import GelsightProc, ImageProc, ImageDiffProc
+from .proc import ProcExecutionError
 from .data import GelsightDepth, GelsightPose
 from .grad_model import RGB2Grad
 from .util import *
@@ -19,7 +20,7 @@ from .util import *
 class DepthProc(GelsightProc):
     """Converts image streams into depth maps."""
 
-    def get_depth(self) -> Optional[GelsightDepth]:
+    def get_depth(self) -> GelsightDepth:
         raise NotImplementedError()
 
     def get_mpp(self) -> float:
@@ -46,6 +47,7 @@ class DepthFromModelProc(DepthProc):
     image_mpp: float = 0.005
     model_output_width: int = 120
     model_output_height: int = 160
+    depth_min: float = 3.25
 
     def __init__(self, stream: ImageProc, diff_stream: ImageDiffProc, cfg: Dict[str, Any]):
         super().__init__()
@@ -73,7 +75,9 @@ class DepthFromModelProc(DepthProc):
 
     def execute(self):
         diff_frame = self._diff_stream.get_frame()
-
+        if diff_frame is None:
+            ProcExecutionError("Diff frame returned 'None'") 
+        
         # Transform frame into model input
         # TODO: Refactor to use numpy
         X_i = np.zeros((self.model_output_height * self.model_output_width, 5))
@@ -89,6 +93,9 @@ class DepthFromModelProc(DepthProc):
         gy = grad.detach().numpy()[:, 0].reshape((self.model_output_height, self.model_output_width))
 
         # Interpolate gradients over markers
+        frame = self._stream.get_frame()
+        if frame is None:
+            raise ProcExecutionError("Stream frame returned 'None'")
         gx, gy = demark(self._stream.get_frame(), gx, gy)
 
         # Construct depth map using poisson reconstruction
@@ -101,17 +108,18 @@ class DepthFromModelProc(DepthProc):
         if self._init_dm is None:
             self._init_dm = dm
         dm -= self._init_dm
-
+        dm[dm < self.depth_min] = 0.0
         self._dm = GelsightDepth(self.model_output_width, self.model_output_height, dm)
     
-    def get_depth(self) -> Optional[GelsightDepth]:
+    def get_depth(self) -> GelsightDepth:
         return self._dm
 
     def get_mpp(self) -> float:
         return self.image_mpp
 
-    def get_ros_msg() -> PointCloud2:
-        return self._dm.get_ros_msg(self.image_mpp)
+    def get_ros_msg(self) -> Optional[PointCloud2]:
+        if self._dm is not None:
+            return self._dm.get_ros_msg(self.image_mpp)
 
 
 class DepthFromCoeffProc(DepthProc):
@@ -166,7 +174,7 @@ class DepthFromCoeffProc(DepthProc):
 
         self._dm = GelsightDepth(self.image_width, self.image_height, dm)
     
-    def get_depth(self) -> Optional[GelsightDepth]:
+    def get_depth(self) -> GelsightDepth:
         return self._dm
 
     def get_mpp(self) -> float:
@@ -246,15 +254,17 @@ class PoseFromDepthProc(GelsightProc):
                 y_bar /= len(self._buffer)
                 theta_bar /= len(self._buffer)
 
-            x_bar = (x_bar - (dm.shape[0]//2)) * self._depth.get_mpp()
-            y_bar = (y_bar - (dm.shape[1]//2)) * self._depth.get_mpp()
+            x_bar = (x_bar - (dm.shape[1]//2)) * self._depth.get_mpp()
+            y_bar = (y_bar - (dm.shape[0]//2)) * self._depth.get_mpp()
             self._pose = GelsightPose(x_bar, y_bar, theta)
 
-    def get_pose(self) -> Optional[GelsightPose]:
+    def get_pose(self) -> GelsightPose:
         return self._pose
 
     def get_ros_type(self) -> PoseStamped:
         return PoseStamped
 
-    def get_ros_msg(self) -> PoseStamped:
-        return self._pose.get_ros_msg()
+    def get_ros_msg(self) -> Optional[PoseStamped]:
+        if self._pose is not None:
+            return self._pose.get_ros_msg()
+        return PoseStamped()
