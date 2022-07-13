@@ -10,141 +10,119 @@ import gelsight_ros as gsr
 from gelsight_ros.msg import GelsightFlowStamped, GelsightMarkersStamped
 from geometry_msgs.msg import PoseStamped
 import rospy
+from rospy import AnyMsg
 from sensor_msgs.msg import PointCloud2, Image
-import traceback
+from typing import List, Dict, Any
 
 # Default parameters
 DEFAULT_RATE = 30
-DEFAULT_QUEUE_SIZE = 2
-DEFAULT_IMAGE_TOPIC_NAME = "raw"
-DEFAULT_INPUT_TYPE = "http_stream"
+DEFAULT_QUEUE_SIZE = 4
 DEFAULT_DEPTH_METHOD = "poisson"
-DEFAULT_DEPTH_TOPIC_NAME = "depth"
-DEFAULT_MARKER_TOPIC_NAME = "markers"
-DEFAULT_MARKER_IMAGE_TOPIC_NAME = "marker_image"
-DEFAULT_FLOW_TOPIC_NAME = "flow"
-DEFAULT_FLOW_IMAGE_TOPIC_NAME = "flow_image"
-DEFAULT_POSE_TOPIC_NAME = "pose"
+
+class Gelsight:
+    def __init__(self):
+        self.processes: List[gsr.GelsightProc]  = []
+
+    def add_process(self, proc: gsr.GelsightProc, topic_name: str = ""): 
+        pub = None
+        if topic_name != "":
+            # Set queue size by ROS type 
+            ros_type = proc.get_ros_type()
+            queue_size = DEFAULT_QUEUE_SIZE
+            if ros_type == Image:
+                queue_size = 2
+
+            pub = rospy.Publisher(topic_name, ros_type, queue_size=queue_size) 
+        else:
+            rospy.logwarn(f"{proc.__class__.__name__}: topic_name not set, publisher disabled.")
+        self.processes.append((proc, pub))
+
+    def execute(self):
+        for process, pub in self.processes:
+            try:
+                process.execute()
+                if pub:
+                    msg = process.get_ros_msg() 
+                    if hasattr(msg, "header"):
+                        # TODO: Set actual frame ID
+                        msg.header.frame_id = "map"
+                    pub.publish(msg)
+            except Exception as e:
+                import traceback
+                rospy.logerr(f"{process.__class__.__name__}: Exception occured: {traceback.format_exc()}")
+
+def get_topic_name(cfg: Dict[str, Any]):
+    return cfg["topic_name"] if "topic_name" in cfg else ""
 
 if __name__ == "__main__":
     rospy.init_node("gelsight")
     rate = rospy.Rate(rospy.get_param("~rate", DEFAULT_RATE))
-    gelsight_pipeline = [] # List of (GelsightProc, publisher) tuple
 
-    # Configure image stream
-    stream = None
-    input_type = rospy.get_param("~input_type", DEFAULT_INPUT_TYPE)
-    if input_type == "http_stream":
-        if not rospy.has_param("~http_stream"):
-            rospy.signal_shutdown("No config provided for HTTP stream, but 'http_stream' input selected. Please set http_stream/.")
-        http_cfg = rospy.get_param("~http_stream")
-        if "url" not in http_cfg or http_cfg["url"] == "":
-            rospy.signal_shutdown("URL for GelSight camera stream not provided in config. Please set http_stream/url.")
+    # Create and add basic image streaming processes
+    gelsight = Gelsight()
+    image_cfg = rospy.get_param("~http_stream")
+    image_proc = gsr.ImageProc(image_cfg)
+    gelsight.add_process(image_proc, get_topic_name(image_cfg))
 
-        if not all(roi in http_cfg for roi in ["roi_x0", "roi_y0", "roi_x1", "roi_y1"]):
-            rospy.signal_shutdown("Missing one of the roi corners. Please check http_stream/roi_X.")
-        roi = (http_cfg["roi_x0"], http_cfg["roi_y0"], http_cfg["roi_x1"], http_cfg["roi_y1"])
-        stream = gsr.GelsightHTTPStream(http_cfg["url"], roi)
-
-        if "publish_image" in http_cfg and http_cfg["publish_image"]:
-            image_proc = gsr.ImageProc(stream)
-            image_pub = rospy.Publisher(DEFAULT_IMAGE_TOPIC_NAME, Image, queue_size=DEFAULT_QUEUE_SIZE)
-            gelsight_pipeline.append((image_proc, image_pub))
-
-        if True:
-            image_diff_proc = gsr.ImageDiffProc(stream)
-            image_diff_pub = rospy.Publisher("/diff", Image, queue_size=DEFAULT_QUEUE_SIZE)
-            gelsight_pipeline.append((image_diff_proc, image_diff_pub))
-
-    elif input_type == "file_stream":
-        if not rospy.has_param("~file_stream/path"):
-            rospy.signal_shutdown("No file path provided, but 'file_stream' input selected. Please set file_stream/path.")
-        stream = gsr.GelsightFileStream(rospy.get_param("~file_stream/path"))
-    else:
-        rospy.signal_shutdown(f"Input type not recognized or supported: {input_type}")
+    # Load image diff process 
+    if rospy.get_param("~diff/enable", False):
+        diff_cfg = rospy.get_param("~diff")
+        diff_proc = gsr.ImageDiffProc(image_proc)
+        gelsight.add_process(gsr.ImageDiffProc(image_proc), get_topic_name(diff_cfg))
 
     # Load depth reconstruction process
     if rospy.get_param("~depth/enable", False):
         depth_cfg = rospy.get_param("~depth")
         depth_method = rospy.get_param("~depth/method", DEFAULT_DEPTH_METHOD)
+        depth_topic = get_topic_name(depth_cfg)
 
-        # Compute depth only using poisson approx
-        if depth_method == "poisson":
-            depth_proc = gsr.DepthFromPoissonProc(stream, depth_cfg)
-            topic_name = rospy.get_param("~depth/topic_name", DEFAULT_DEPTH_TOPIC_NAME)
-            depth_pub = rospy.Publisher(topic_name, PointCloud2, queue_size=DEFAULT_QUEUE_SIZE)
-            gelsight_pipeline.append((depth_proc, depth_pub))
-
-            # Load pose process
-            if rospy.get_param("~pose/enable", False):
-                pose_cfg = rospy.get_param("~pose")
-                pose_proc = gsr.PoseFromDepthProc(depth_proc, pose_cfg)
-                topic_name = rospy.get_param("~pose/topic_name", DEFAULT_POSE_TOPIC_NAME)
-                pose_pub = rospy.Publisher(topic_name, PoseStamped, queue_size=DEFAULT_QUEUE_SIZE)
-                gelsight_pipeline.append((pose_proc, pose_pub))
-        
-        # Compute depth using neural-network 
-        elif depth_method == "nn":
-            depth_proc = gsr.DepthFromCustomModelProc(stream, depth_cfg)
-            topic_name = rospy.get_param("~depth/topic_name", DEFAULT_DEPTH_TOPIC_NAME)
-            depth_pub = rospy.Publisher(topic_name, PointCloud2, queue_size=DEFAULT_QUEUE_SIZE)
-            gelsight_pipeline.append((depth_proc, depth_pub))
-
-            # Load pose process
-            if rospy.get_param("~pose/enable", False):
-                pose_cfg = rospy.get_param("~pose")
-                pose_proc = gsr.PoseFromDepthProc(depth_proc, pose_cfg)
-                topic_name = rospy.get_param("~pose/topic_name", DEFAULT_POSE_TOPIC_NAME)
-                pose_pub = rospy.Publisher(topic_name, PoseStamped, queue_size=DEFAULT_QUEUE_SIZE)
-                gelsight_pipeline.append((pose_proc, pose_pub))
+        if depth_method == "functional":
+            # Compute depth using functional approx
+            depth_proc = gsr.DepthFromCoeffProc(stream, depth_cfg)
+            gelsight.add_process(depth_proc, depth_topic)
+        elif depth_method == "model":
+            # Compute depth using trained model
+            depth_proc = gsr.DepthFromModelProc(stream, depth_cfg)
+            gelsight.add_process(depth_proc, depth_topic)
         else:
-            rospy.logwarn(f"Depth method not recognized or supported: {depth_method}")
+            rospy.signal_shutdown(f"Depth method not recognized: {depth_method}")
+
+        # Load pose process
+        if rospy.get_param("~pose/enable", False):
+            pose_cfg = rospy.get_param("~pose")
+            pose_proc = gsr.PoseFromDepthProc(depth_proc, pose_cfg)
+            gelsight.add_process(pose_proc, get_topic_name(pose_cfg))
+    
     elif rospy.get_param("~pose/enable", False):
         rospy.logwarn("Pose detection is enabled, but depth computing is disabled. Pose will be ignored.")
 
     # Load marker process
     if rospy.get_param("~markers/enable", False):
         marker_cfg = rospy.get_param("~markers")
-        marker_proc = gsr.MarkersProc(stream, marker_cfg)
-        topic_name = rospy.get_param("~markers/topic_name", DEFAULT_MARKER_TOPIC_NAME)
-        marker_pub = rospy.Publisher(topic_name, GelsightMarkersStamped, queue_size=DEFAULT_QUEUE_SIZE)
-        gelsight_pipeline.append((marker_proc, marker_pub))
+        marker_proc = gsr.MarkersProc(image_proc, marker_cfg)
+        gelsight.add_process(marker_proc, get_topic_name(marker_cfg))
 
         if rospy.get_param("~markers/publish_image", False):
-            marker_im_proc = gsr.DrawMarkersProc(stream, marker_proc)
-            marker_im_pub = rospy.Publisher(DEFAULT_MARKER_IMAGE_TOPIC_NAME, Image, queue_size=DEFAULT_QUEUE_SIZE)
-            gelsight_pipeline.append((marker_im_proc, marker_im_pub))
+            marker_im_proc = gsr.DrawMarkersProc(image_proc, marker_proc)
+            gelsight.add_process(marker_im_proc, get_topic_name(marker_cfg) + "_image")
 
         # Load flow process
         if rospy.get_param("~flow/enable", False):
             flow_cfg = rospy.get_param("~flow")
             flow_proc = gsr.FlowProc(marker_proc, flow_cfg)
-            topic_name = rospy.get_param("~flow/topic_name", DEFAULT_FLOW_TOPIC_NAME)
-            flow_pub = rospy.Publisher(topic_name, GelsightFlowStamped, queue_size=DEFAULT_QUEUE_SIZE)
-            gelsight_pipeline.append((flow_proc, flow_pub))
+            gelsight.add_process(flow_proc, get_topic_name(flow_cfg))
 
             if rospy.get_param("~flow/publish_image", False):
-                flow_im_proc = gsr.DrawFlowProc(stream, flow_proc)
-                flow_im_pub = rospy.Publisher(DEFAULT_FLOW_IMAGE_TOPIC_NAME, Image, queue_size=DEFAULT_QUEUE_SIZE)
-                gelsight_pipeline.append((flow_im_proc, flow_im_pub))
+                flow_im_proc = gsr.DrawFlowProc(image_proc, flow_proc)
+                gelsight.add_process(flow_im_proc, get_topic_name(flow_cfg) + "_image")
     
     elif rospy.get_param("~flow/enable", False):
         rospy.logwarn("Flow detection is enabled, but marker tracking is disabled. Flow will be ignored.")
 
     # Main loop
-    while not rospy.is_shutdown() and stream.while_condition:
+    while not rospy.is_shutdown() and image_proc.is_running():
         try:
-            for proc, pub in gelsight_pipeline:
-                try:
-                    msg = proc.execute()
-                    if msg is not None:
-                        if hasattr(msg, "header"):
-                            msg.header.frame_id = "map"
-                        pub.publish(msg)
-                except NotImplementedError:
-                    rospy.logwarn(f"{proc.__class__.__name__}: Feature not implemented")
-                except Exception as e:
-                    rospy.logerr(f"{proc.__class__.__name__}: Exception occured: {traceback.format_exc()}")
+            gelsight.execute() 
             rate.sleep()
         except rospy.ROSInterruptException:
             pass

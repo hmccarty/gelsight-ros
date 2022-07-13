@@ -35,7 +35,7 @@ class RGB2Grad(nn.Module):
         return self.fc4(x)
         
 
-class GelsightDepthDataset(Dataset):
+class GelsightGradDataset(Dataset):
     def __init__(self, csv_file, transform=None):
         self.labels = pd.read_csv(csv_file)
 
@@ -46,4 +46,3 @@ class GelsightDepthDataset(Dataset):
         X = self.labels.iloc[idx, 1:6].to_numpy()
         y = self.labels.iloc[idx, 6:].to_numpy()
         return X.astype(np.float32), y.astype(np.float32)
-        # return R, G, B, x, y, gx, gy

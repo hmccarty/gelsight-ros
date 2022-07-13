@@ -1,6 +1,6 @@
 <launch>
   <node name="gelsight" type="gelsight.py" pkg="gelsight_ros" output="screen">
     <rosparam command="load" file="$(find gelsight_ros)/config/gelsight.yml"/>
-    <param name="depth/model_path" value="$(find gelsight_ros)/data/v4-model.pth"/>
+    <param name="depth/model_path" value="$(find gelsight_ros)/data/model-17-53-24.pth"/>
   </node>
 </launch>

@@ -77,13 +77,3 @@ if __name__ == "__main__":
     fig, ax = plt.subplots()
     ax.quiver(X, Y, U, V, C) #, scale=30, width=0.0005)
     plt.show()
-
-    # Plot open3d pointcloud
-    vis3d = gsr.gs3drecon.Visualize3D(imgw, imgh, '', mpp)
-    boundary = np.zeros((imgh, imgw))
-    dm = gsr.util.poisson_reconstruct(U, V, boundary)
-    dm = np.reshape(dm, (imgh, imgw))
-    rate = rospy.Rate(10)
-    while not rospy.is_shutdown():
-        vis3d.update(dm)
-        rate.sleep()

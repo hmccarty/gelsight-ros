@@ -1,27 +1,23 @@
-input_type: "http_stream" # Either "http_stream" or "file_stream"
-
-file_stream:
-  path: ""
-
 http_stream:
   url: "http://192.168.0.171:8080/?action=stream"
-  publish_image: true
-  width: 480
-  height: 640
-  mpp: 0.00018958889782351692
-  roi_x0: 70
-  roi_y0: 120
-  roi_x1: 345
-  roi_y1: 390
+  topic_name: "/raw" 
+  height: 160
+  width: 120
+  mmpp: 0.1896
+  roi: [[114, 147], [388, 132], [134, 476], [358, 476]]
+
+diff:
+  enable: true
+  topic_name: "diff"
 
 depth:
-  enable: true
+  enable: false
   topic_name: "depth"
-  method: "nn"
+  method: "model" # Either 'functional' or 'model'
   compute_type: "cuda" # Either 'cuda' or 'cpu'
 
 markers:
-  enable: false
+  enable: true
   topic_name: "markers"
   publish_image: true
   threshold_block_size: 31
@@ -29,7 +25,7 @@ markers:
   marker_neighborhood_size: 24
 
 flow:
-  enable: false
+  enable: true
   topic_name: "flow"
   publish_image: true
   n: 10
