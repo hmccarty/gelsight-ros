@@ -1,6 +1,9 @@
 <launch>
+  <arg name="name" default="gelsight"/>
   <arg name="config" default="$(find gelsight_ros)/config/gelsight.yml" />
-  <node name="gelsight" type="gelsight.py" pkg="gelsight_ros" output="screen">
-    <rosparam command="load" file="$(arg config)" subst_value="true"/>
-  </node>
+
+  <group ns="$(arg name)">
+    <rosparam command="load" file="$(arg config)" subs_value="true"/>
+    <node name="gelsight" type="gelsight.py" pkg="gelsight_ros" output="screen"/>
+  </group>
 </launch>

@@ -1,22 +1,19 @@
-input_type: "http_stream" # Either "http_stream" or "file_stream"
-
-file_stream:
-  path: ""
-
 http_stream:
   url: "http://192.168.0.171:8080/?action=stream"
-  publish_image: true
-  width: 480
-  height: 640
-  mmpp: 0.0887
-  roi_x0: 70
-  roi_y0: 120
-  roi_x1: 345
-  roi_y1: 390
+  topic_name: "/raw" 
+  height: 160
+  width: 120
+  mmpp: 0.1896
+  roi: [[114, 147], [388, 132], [134, 476], [358, 476]]
+
+diff:
+  enable: true
+  topic_name: "diff"
 
 depth:
   enable: false
   topic_name: "depth"
+  method: "model" # Either 'functional' or 'model'
   compute_type: "cuda" # Either 'cuda' or 'cpu'
   model_path: $(find gelsight_ros)/data/nnr15.pt
 
@@ -24,20 +21,20 @@ markers:
   enable: true
   topic_name: "markers"
   publish_image: true
-  threshold_block_size: 11
-  threshold_neg_bias: 15
-  marker_neighborhood_size: 20
+  threshold_block_size: 31
+  threshold_neg_bias: 19
+  marker_neighborhood_size: 24
 
 flow:
   enable: true
   topic_name: "flow"
-  publish_image: false
-  n: 0
-  m: 0 
-  x0: 0
-  y0: 0
-  dx: 0
-  dy: 0
+  publish_image: true
+  n: 10
+  m: 14
+  x0: 13
+  y0: 6
+  dx: 11
+  dy: 11
 
 pose:
   enable: false

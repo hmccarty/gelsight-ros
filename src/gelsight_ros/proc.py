@@ -1,43 +1,110 @@
 #!/usr/bin/env python3
 
-from collections import deque
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
-from find_marker import Matching
-from gelsight_ros.msg import GelsightMarkersStamped as GelsightMarkersStampedMsg, \
-    GelsightFlowStamped as GelsightFlowStampedMsg
-from geometry_msgs.msg import PoseStamped
-import math
 import numpy as np
-from rospy import AnyMsg
-from scipy import ndimage
-from scipy.ndimage.filters import maximum_filter, minimum_filter
-from sensor_msgs.msg import PointCloud2, Image
+from rospy import Message as ROSMsg
+from sensor_msgs.msg import Image
 from typing import Dict, Tuple, Any, Optional
 
-from .data import GelsightDepth, GelsightFlow, GelsightMarkers, GelsightPose
-from .gs3drecon import Reconstruction3D, Finger
-from .stream import GelsightStream
 from .util import *
 
+class ProcExecutionError(Exception):
+    """Raised when non-fatal error occurs in execution"""
+    pass
+
 class GelsightProc:
-    def execute(self) -> AnyMsg:
+    def execute(self) -> bool:
+        raise NotImplementedError()
+
+    def get_ros_type(self) -> ROSMsg:
+        raise NotImplementedError()
+
+    def get_ros_msg(self) -> ROSMsg:
         raise NotImplementedError()
 
 class ImageProc(GelsightProc):
     """
     Converts stream to sensor msgs.
-
-    execute() -> Image msg
     """
 
     # Parameter defaults
-    encoding = "bgr8"
+    encoding: str = "bgr8"
+    size: Tuple[int, int] = (120, 160) # width, height 
 
-    def __init__(self, stream: GelsightStream):
+    def __init__(self, cfg: Dict[str, Any]):
         super().__init__()
-        self._stream: GelsightStream = stream
 
-    def execute(self) -> Image:
+        if "url" not in cfg:
+            raise RuntimeError("Missing stream url.")
+        self._dev = cv2.VideoCapture(cfg["url"])
+        self.size = (
+            int(cfg["width"]) if "width" in cfg else self.size[0],
+            int(cfg["height"]) if "height" in cfg else self.size[1],
+        )
+
+        self.output_coords = [(0, 0), (self.size[0], 0), self.size, (0, self.size[1])]
+        self._roi = cfg["roi"] if "roi" in cfg else None
+        self._frame = None
+
+    def is_running(self) -> bool:
+        return self._dev.isOpened()
+
+    def execute(self):
+        ret, frame = self._dev.read()
+
+        # Warp to match ROI
+        if self._roi is not None:
+            M = cv2.getPerspectiveTransform(
+                np.float32(self._roi), np.float32(self.output_coords))
+            frame = cv2.warpPerspective(frame, M, self.size)
+
+        # Convert frame to RGB
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        self._frame = frame
+
+    def get_frame(self) -> Optional[np.ndarray]:
+        if self._frame is not None:
+            return np.copy(self._frame)
+
+    def get_ros_type(self) -> Image:
+        return Image
+
+    def get_ros_msg(self) -> Optional[Image]:
+        return CvBridge().cv2_to_imgmsg(self._frame, self.encoding)
+
+class ImageDiffProc(GelsightProc):
+    """
+    Computes pixel-diff from initial frame in stream.
+    """
+
+    # Parameter defaults
+    intensity: float = 3.0
+    encoding: str = "8UC3"
+
+    def __init__(self, stream: ImageProc):
+        super().__init__()
+        self._stream: ImageProc = stream
+        self._init_frame: Optional[np.ndarray] = None
+        self._diff_frame: Optional[np.ndarray] = None
+
+    def execute(self):
         frame = self._stream.get_frame()
-        return CvBridge().cv2_to_imgmsg(frame, self.encoding)
+        if self._init_frame is None:
+            self._init_frame = frame
+
+        diff = ((frame * 1.0) - self._init_frame) * self.intensity
+        diff[diff > 255] = 255
+        diff[diff < 0] = 0
+        self._diff_frame = diff
+
+    def get_frame(self) -> Optional[np.ndarray]:
+        if self._diff_frame is not None:
+            return np.copy(self._diff_frame)
+
+    def get_ros_type(self) -> Image:
+        return Image
+
+    def get_ros_msg(self) -> Optional[Image]:
+        if self._diff_frame is not None:
+            return CvBridge().cv2_to_imgmsg(np.uint8(self._diff_frame), self.encoding)

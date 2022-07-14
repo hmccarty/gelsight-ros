@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-from .proc import GelsightProc, ImageProc
-from .depth import DepthProc, DepthFromModelProc, DepthFromPoissonProc, PoseFromDepthProc
+from .proc import GelsightProc, ImageProc, ImageDiffProc
+from .proc import ProcExecutionError
+from .depth import DepthProc, DepthFromModelProc, DepthFromCoeffProc, PoseFromDepthProc
 from .markers import MarkersProc, FlowProc, DrawMarkersProc, DrawFlowProc
-from .stream import GelsightStream, GelsightHTTPStream, GelsightFileStream
+from .grad_model import RGB2Grad, GelsightGradDataset

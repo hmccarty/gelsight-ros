@@ -6,15 +6,11 @@ TODO:
  - Process marker shape from config
 """
 
-from collections import deque
-import rospy
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
 from find_marker import Matching
 from gelsight_ros.msg import GelsightMarkersStamped as GelsightMarkersStampedMsg, \
     GelsightFlowStamped as GelsightFlowStampedMsg
-from geometry_msgs.msg import PoseStamped
-import math
 import numpy as np
 from rospy import AnyMsg
 from scipy import ndimage
@@ -22,10 +18,8 @@ from scipy.ndimage.filters import maximum_filter, minimum_filter
 from sensor_msgs.msg import PointCloud2, Image
 from typing import Dict, Tuple, Any, Optional
 
-from .proc import GelsightProc
-from .data import GelsightDepth, GelsightFlow, GelsightMarkers, GelsightPose
-from .gs3drecon import Reconstruction3D, Finger
-from .stream import GelsightStream
+from .proc import GelsightProc, ImageProc
+from .data import GelsightFlow, GelsightMarkers
 from .util import *
 
 
@@ -46,9 +40,9 @@ class MarkersProc(GelsightProc):
     threshold_neg_bias: int = 25
     marker_neighborhood_size: int = 20
 
-    def __init__(self, stream: GelsightStream, cfg: Dict[str, Any]):
+    def __init__(self, stream: ImageProc, cfg: Dict[str, Any]):
         super().__init__()
-        self._stream: GelsightStream = stream
+        self._stream: ImageProc = stream
         self._markers: Optional[GelsightMarkers] = None
 
         if "threshold_block_size" in cfg:
@@ -79,10 +73,15 @@ class MarkersProc(GelsightProc):
 
         # Convert to gelsight dataclass
         self._markers = GelsightMarkers(im.shape[1], im.shape[0], xy)
-        return self._markers.get_ros_msg_stamped()
 
     def get_markers(self) -> Optional[GelsightMarkers]:
         return self._markers
+
+    def get_ros_type(self) -> GelsightMarkersStampedMsg:
+        return GelsightMarkersStampedMsg
+
+    def get_ros_msg(self) -> GelsightMarkersStampedMsg:
+        return self._markers.get_ros_msg_stamped()
 
 
 class FlowProc(GelsightProc):
@@ -100,7 +99,6 @@ class FlowProc(GelsightProc):
       - matching_fps (default: 25)
       - flow_scale (default: 5)
     """
-
 
     # Parameter defaults
     marker_shape: Tuple[int, int] = (14, 10) 
@@ -154,10 +152,15 @@ class FlowProc(GelsightProc):
                 rospy.logwarn('Marker flow is uncalibrated! Ensure all markers are detected in /marker_image')
                 self.reset_matching()
                 return
-            return self._flow.get_ros_msg_stamped()
 
     def get_flow(self) -> Optional[GelsightFlow]:
         return self._flow
+
+    def get_ros_type(self) -> GelsightFlowStampedMsg:
+        return GelsightFlowStampedMsg
+
+    def get_ros_msg(self) -> GelsightFlowStampedMsg:
+        return self._flow.get_ros_msg_stamped()
 
 class DrawMarkersProc(GelsightProc):
     """
@@ -171,12 +174,13 @@ class DrawMarkersProc(GelsightProc):
     marker_radius: int = 2
     marker_thickness: int = 2
 
-    def __init__(self, stream: GelsightStream, markers: MarkersProc):
+    def __init__(self, stream: ImageProc, markers: MarkersProc):
         super().__init__()
-        self._stream: GelsightStream = stream
+        self._stream: ImageProc = stream
         self._markers: MarkersProc = markers
+        self._frame: Optional[np.ndarray] = None
 
-    def execute(self) -> Image:
+    def execute(self):
         frame = self._stream.get_frame()
         gsmarkers = self._markers.get_markers()
         if gsmarkers is None:
@@ -186,8 +190,14 @@ class DrawMarkersProc(GelsightProc):
             p0 = (int(gsmarkers.markers[i, 0]), int(gsmarkers.markers[i, 1]))
             frame = cv2.circle(frame, p0, self.marker_radius,
                 self.marker_color, self.marker_thickness)
+        
+        self._frame = frame
 
-        return CvBridge().cv2_to_imgmsg(frame, self.encoding)
+    def get_ros_type(self) -> Image:
+        return Image
+
+    def get_ros_msg(self) -> Image:
+        return CvBridge().cv2_to_imgmsg(self._frame, self.encoding)
 
 class DrawFlowProc(GelsightProc):
     """
@@ -201,16 +211,17 @@ class DrawFlowProc(GelsightProc):
     arrow_thickness: int = 2
     arrow_scale: int = 5
 
-    def __init__(self, stream: GelsightStream, flow: FlowProc):
+    def __init__(self, stream: ImageProc, flow: FlowProc):
         super().__init__()
-        self._stream: GelsightStream = stream
+        self._stream: ImageProc = stream
         self._flow: FlowProc = flow
+        self._frame: Optional[np.ndarray] = None
 
-    def execute(self) -> Image:
+    def execute(self):
         frame = self._stream.get_frame()
         flow = self._flow.get_flow()
         if flow is None:
-            return None
+            return
 
         for i in range(flow.ref.markers.data.shape[0]):
             p0 = (int(flow.ref.markers.data[i, 0]), int(flow.ref.markers.data[i, 1]))
@@ -219,4 +230,10 @@ class DrawFlowProc(GelsightProc):
             frame = cv2.arrowedLine(frame, p0, p1,
                 self.arrow_color, self.arrow_thickness)
 
-        return CvBridge().cv2_to_imgmsg(frame, self.encoding)
+        self._frame = frame
+
+    def get_ros_type(self) -> Image:
+        return Image
+
+    def get_ros_msg(self) -> Image:
+        return CvBridge().cv2_to_imgmsg(self._frame, self.encoding)
