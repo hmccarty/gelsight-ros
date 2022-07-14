@@ -79,16 +79,14 @@ class DepthFromModelProc(DepthProc):
             ProcExecutionError("Diff frame returned 'None'") 
         
         # Transform frame into model input
-        # TODO: Refactor to use numpy
-        X_i = np.zeros((self.model_output_height * self.model_output_width, 5))
-        z = 0
-        for y in range(diff_frame.shape[0]):
-            for x in range(diff_frame.shape[1]):
-                X_i[z] = np.concatenate((diff_frame[y, x], np.array((x, y))))
-                z += 1
+        batch_len = self.model_output_height * self.model_output_width
+        X = np.reshape(diff_frame, (batch_len, 3))
+        xv, yv = np.meshgrid(np.arange(diff_frame.shape[1]), np.arange(diff_frame.shape[0]))
+        X = np.concatenate((X, np.reshape(xv, (batch_len, 1))), axis=1)
+        X = np.concatenate((X, np.reshape(yv, (batch_len, 1))), axis=1)
 
         # Collect gradients from model and reshape
-        grad = self._model(torch.from_numpy(X_i.astype(np.float32)))
+        grad = self._model(torch.from_numpy(X.astype(np.float32)))
         gx = grad.detach().numpy()[:, 1].reshape((self.model_output_height, self.model_output_width))
         gy = grad.detach().numpy()[:, 0].reshape((self.model_output_height, self.model_output_width))
 
