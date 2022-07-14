@@ -18,10 +18,9 @@ from scipy.ndimage.filters import maximum_filter, minimum_filter
 from sensor_msgs.msg import PointCloud2, Image
 from typing import Dict, Tuple, Any, Optional
 
-from .proc import GelsightProc, ImageProc
+from .proc import GelsightProc, ImageProc, ProcExecutionError
 from .data import GelsightFlow, GelsightMarkers
 from .util import *
-
 
 class MarkersProc(GelsightProc):
     """
@@ -149,9 +148,8 @@ class FlowProc(GelsightProc):
             self._flow = GelsightFlow(ref_markers, cur_markers)
             vec_field = self._flow.cur.markers - self._flow.ref.markers
             if np.mean(vec_field) <= self.error_threshold: # hack to determine if calibration is incorrect
-                rospy.logwarn('Marker flow is uncalibrated! Ensure all markers are detected in /marker_image')
+                raise ProcExecutionError("Marker flow is uncalibrated! Ensure all markers are detected in marker_image")
                 self.reset_matching()
-                return
 
     def get_flow(self) -> Optional[GelsightFlow]:
         return self._flow

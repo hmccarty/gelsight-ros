@@ -3,7 +3,7 @@
   <arg name="config" default="$(find gelsight_ros)/config/gelsight.yml" />
 
   <group ns="$(arg name)">
-    <rosparam command="load" file="$(arg config)" subs_value="true"/>
+    <rosparam command="load" file="$(arg config)" subst_value="true"/>
     <node name="gelsight" type="gelsight.py" pkg="gelsight_ros" output="screen"/>
   </group>
 </launch>
