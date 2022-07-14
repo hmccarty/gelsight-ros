@@ -3,6 +3,8 @@
 """
 Collects a sequence of images from the sensor.
 
+roslaunch gelsight_ros record.launch output_path:=(...) num_sec:=(Optional 30s def) num_imgs:=(Optional none def)
+
 Stream configured in config/gelsight.yml
 """
 

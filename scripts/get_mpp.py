@@ -6,7 +6,10 @@ of a Gelsight sensor.
 
 Directions:
 Press a pair of calipers on the finger of the gelsight and take a screenshot.
-Run this script with the length and image path as arguments.
+Run this script with the length and image path as arguments:
+
+rosrun gelsight_ros get_mpp.py _dist_mm:=(dist in mm) _img_path:=(path to img)
+
 Click the two points of calipers and check the command-line for the value.
 """
 
@@ -36,11 +39,13 @@ def click_cb(event, x, y, flags, param):
 if __name__ == "__main__":
     rospy.init_node("get_mpp")
 
-    dist = rospy.get_param("~dist")
+    if not rospy.has_param("~dist_mm"):
+        rospy.signal_shutdown("No dist provided. Please set dist_mm.")
+    dist = rospy.get_param("~dist_mm") / 1000.0
 
     # Retrieve path where image is stored
     if not rospy.has_param("~img_path"):
-        rospy.signal_shutdown("No input path provided. Please set img_path/.")
+        rospy.signal_shutdown("No input path provided. Please set img_path.")
     input_path = rospy.get_param("~img_path")
     im = cv2.imread(input_path)
 

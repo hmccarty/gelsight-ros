@@ -4,6 +4,8 @@
 Labels data for training a depth reconstruction model.
 Can collect images using the 'record.py' script.
 
+rosrun gelsight_ros label_data.py _input_path:=(...) _output_path:=(...) _ball_radius_mm:=(...) _mmpp:=(...)
+
 The dataset can only include the impression and rolling
 of a single spherical object (like a marble). The first image
 should also have no impression, for purposes of training from the
@@ -62,15 +64,18 @@ def click_cb(event, x, y, flags, param):
         cv2.circle(display_frame, (int(circle[0]), int(circle[1])),
             2, (0, 0, 255), 3)
 
-        cv2.imshow('label_data', display_frame)
+        cv2.imshow("label_data", display_frame)
 
 def get_param_or_err(name: str):
-    if not rospy.has_param(f"~{name}"):
-        rospy.signal_shutdown(f"Required parameter missing: {name}")
-    return rospy.get_param(f"~{name}")
+    if rospy.has_param(f"~{name}"):
+        return rospy.get_param(f"~{name}")
+    rospy.logfatal(f"Required parameter missing: {name}")
+    exit()
 
 if __name__ == "__main__":
     rospy.init_node("label")
+
+    print(rospy.get_param_names())
 
     # Retrieve path where images are saved
     input_path = get_param_or_err("input_path")
@@ -98,7 +103,7 @@ if __name__ == "__main__":
             w.writerow(DEFAULT_FIELD_NAMES)
 
     # Retrieve sensor specific parameters
-    radius = get_param_or_err("ball_radius") / 1000.0
+    radius = get_param_or_err("ball_radius_mm") / 1000.0
     mpp = get_param_or_err("mmpp") / 1000.0
 
     # Retrieve all images from input path

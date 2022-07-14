@@ -3,6 +3,8 @@
 """
 Trains a depth reconstruction model using the dataset created by
 the 'label_data.py' script.
+
+rosrun gelsight_ros train.py _input_path:=(...) _output_path:=(...)
 """
 
 import csv
@@ -59,11 +61,12 @@ def test(dataloader, model, loss_fn):
     test_loss /= num_batches
     print(f"Test Error: \n Avg loss: {test_loss:>8f} \n")
 
-def get_param_or_err(name: str, is_private: bool = True):
-    path = f"~{name}" if is_private else name
-    if not rospy.has_param(path):
-        rospy.signal_shutdown(f"Required parameter missing: {name}")
-    return rospy.get_param(path)
+
+def get_param_or_err(name: str):
+    if rospy.has_param(f"~{name}"):
+        return rospy.get_param(f"~{name}")
+    rospy.logfatal(f"Required parameter missing: {name}")
+    exit()
 
 if __name__ == "__main__":
     rospy.init_node("train")
