@@ -1,5 +1,5 @@
 stream:
-  url: "http://192.168.0.171:8080/?action=stream"
+  url: "http://192.168.0.170:8080/?action=stream"
   height: 160
   width: 120
   mmpp: 0.1896
@@ -14,9 +14,9 @@ diff:
 
 depth:
   enable: true
-  method: "model" # Either 'functional' or 'model'
+  method: "functional" # Either 'functional' or 'model'
   compute_type: "cuda" # Either 'cuda' or 'cpu'
-  model_path: $(find gelsight_ros)/data/v4-model.pth
+  model_path: $(find gelsight_ros)/data/model-13-59-40.pth
   # Comment to not publish
   topic_name: "depth"
 

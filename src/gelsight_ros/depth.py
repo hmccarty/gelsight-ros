@@ -47,7 +47,8 @@ class DepthFromModelProc(DepthProc):
     image_mpp: float = 0.005
     model_output_width: int = 120
     model_output_height: int = 160
-    depth_min: float = 3.25
+    depth_min: float = 3.0
+    depth_ratio: float = 0.5
 
     def __init__(self, stream: ImageProc, diff_stream: ImageDiffProc, cfg: Dict[str, Any]):
         super().__init__()
@@ -107,6 +108,7 @@ class DepthFromModelProc(DepthProc):
             self._init_dm = dm
         dm -= self._init_dm
         dm[dm < self.depth_min] = 0.0
+        dm[dm < self.depth_ratio * np.max(dm)] = 0.0
         self._dm = GelsightDepth(self.model_output_width, self.model_output_height, dm)
     
     def get_depth(self) -> GelsightDepth:
@@ -152,9 +154,9 @@ class DepthFromCoeffProc(DepthProc):
     def execute(self):
         # Compute depth map using solver method
         diff = self._diff_stream.get_frame() 
-        dx = diff[:, :, 0] / 255.0
+        dx = diff[:, :, 1] / 255.0
         dx = dx / (1.0 - dx ** 2) ** 0.5 / 32.0
-        dy = (diff[:, :, 1] - diff[:, :, 2]) / 255.0
+        dy = (diff[:, :, 0] - diff[:, :, 2]) / 255.0
         dy = dy / (1.0 - dy ** 2) ** 0.5 / 32.0
 
         diff /= 255.0
@@ -178,7 +180,7 @@ class DepthFromCoeffProc(DepthProc):
     def get_mpp(self) -> float:
         return self.image_mpp
 
-    def get_ros_msg() -> PointCloud2:
+    def get_ros_msg(self) -> PointCloud2:
         return self._dm.get_ros_msg(self.image_mpp)
 
 class PoseFromDepthProc(GelsightProc):

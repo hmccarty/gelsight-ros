@@ -13,6 +13,10 @@ class ProcExecutionError(Exception):
     """Raised when non-fatal error occurs in execution"""
     pass
 
+class GelsightOp:
+    def __call__(self):
+        return NotImplementedError()
+
 class GelsightProc:
     def execute(self) -> bool:
         raise NotImplementedError()
@@ -25,7 +29,7 @@ class GelsightProc:
 
 class ImageProc(GelsightProc):
     """
-    Converts stream to sensor msgs.
+    Collects image frame from stream.
     """
 
     # Parameter defaults
@@ -52,6 +56,8 @@ class ImageProc(GelsightProc):
 
     def execute(self):
         ret, frame = self._dev.read()
+        if not ret:
+            raise RuntimeError("Unable to grab image from stream. Check GelSight feed.")
 
         # Warp to match ROI
         if self._roi is not None:

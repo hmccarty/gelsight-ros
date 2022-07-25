@@ -88,7 +88,7 @@ if __name__ == "__main__":
     output_file = output_path + f"/model-{dt.now().strftime('%H-%M-%S')}.pth"
 
     # Create dataset
-    dataset = gsr.GelsightDepthDataset(input_path)
+    dataset = gsr.GelsightGradDataset(input_path)
 
     train_size = int(len(dataset) * DEFAULT_TRAIN_SPLIT)
     test_size = len(dataset) - train_size

@@ -42,13 +42,14 @@ if __name__ == "__main__":
     cfg = rospy.get_param("stream")
     if not cfg:
         rospy.signal_shutdown("No config provided for HTTP stream. Please set http_stream/.")
-    stream = gsr.ImageProc(cfg["url"])
+    stream = gsr.ImageProc(cfg)
     
     # Main loop
     i = 0
-    while not rospy.is_shutdown() and stream.while_condition and \
+    while not rospy.is_shutdown() and stream.is_running() and \
         rospy.Time.now() < end_time and i < num_imgs:
         try:
+            stream.execute()
             frame = stream.get_frame()
             if not cv2.imwrite(f"{output_path}/{i}.jpg", frame):
                 rospy.logwarn(f"Failed to write file to {output_path}")

@@ -6,9 +6,20 @@ from gelsight_ros.msg import GelsightMarkers as GelsightMarkersMsg, \
 from geometry_msgs.msg import PoseStamped
 import numpy as np
 from sensor_msgs import point_cloud2
-from sensor_msgs.msg import PointCloud2, PointField
+from sensor_msgs.msg import PointCloud2, PointField, Image
 from std_msgs.msg import Header
 from tf.transformations import quaternion_from_euler
+
+
+
+@dataclass
+class GelsightFrame:
+    """Stores a single frame captured by sensor"""
+    image: np.ndarray
+    encoding: str
+
+    def get_ros_msg(self) -> Image:
+        return CvBridge().cv2_to_imgmsg(self.image, self.encoding)
 
 @dataclass
 class GelsightMarkers:
@@ -25,16 +36,11 @@ class GelsightMarkers:
         elif len(self.markers.shape) != 2 or self.markers.shape[1] != 2:
             raise ValueError(f"GelsightMarkers: markers must have shape (n_markers, 2), given shape: {self.markers.shape}")
 
-    def get_ros_msg(self) -> GelsightMarkersMsg:
-        msg = GelsightMarkersMsg()    
+    def get_ros_msg(self) -> GelsightMarkersStampedMsg:
+        msg = GelsightMarkersStampedMsg()    
         msg.n = self.rows
         msg.m = self.cols
         msg.data = self.markers.astype('float32').flatten(order='C') # Row major
-        return msg
-
-    def get_ros_msg_stamped(self) -> GelsightMarkersStampedMsg:
-        msg = GelsightMarkersStampedMsg()
-        msg.markers = self.get_ros_msg()
         return msg
 
 @dataclass
@@ -49,30 +55,23 @@ class GelsightFlow:
 
     def get_ros_msg_stamped(self) -> GelsightFlowStampedMsg:
         msg = GelsightFlowStampedMsg()
-        msg.ref_markers = self.ref.get_ros_msg()
-        msg.cur_markers = self.cur.get_ros_msg()
+        msg.ref_markers = self.ref.get_ros_msg().markers
+        msg.cur_markers = self.cur.get_ros_msg().markers
         return msg 
 
 @dataclass
 class GelsightDepth:
     """Stores depth at each pixel"""
-    im_width: int
-    im_height: int
     depth: np.ndarray # (im_height, im_width, dtype=float32)
 
-    def __post_init__(self):
-        if self.depth.shape[0] != self.im_height:
-            raise ValueError(f"GelsightDepth: number of depth rows ({self.depth.shape[0]}) != set height ({self.im_height})")
-        if self.depth.shape[1] != self.im_width:
-            raise ValueError(f"GelsightDepth: number of depth cols ({self.depth.shape[1]}) != set width ({self.im_width})")
-
     def get_ros_msg(self, mpp: float) -> PointCloud2:
+        height, width = self.depth.shape
         points = [] 
-        for i in range(self.im_width):
-            for j in range(self.im_height):
+        for i in range(width):
+            for j in range(height):
                 points.append(
-                    ((i - (self.depth.shape[1]//2)) * mpp,
-                     (j - (self.depth.shape[0]//2)) * mpp,
+                    ((i - (width//2)) * mpp,
+                     (j - (height//2)) * mpp,
                      self.depth[j, i] / 1000.0, int(0))
                 )
 
@@ -80,16 +79,15 @@ class GelsightDepth:
             PointField("x", 0, PointField.FLOAT32, 1),
             PointField("y", 4, PointField.FLOAT32, 1),
             PointField("z", 8, PointField.FLOAT32, 1),
-            PointField("rgb", 12, PointField.UINT32, 1),
+            PointField("r/home/yu/Documents/catkin_ws/src/gelsight-ros/data/panpan_datagb", 12, PointField.UINT32, 1),
         ]
 
         header = Header()
         return point_cloud2.create_cloud(header, fields, points)
 
 @dataclass
-class GelsightPose:
-    """Stores pose of contact"""
-
+class GelsightPCA:
+    """Stores principal axis"""
     x: float
     y: float
     theta: float
